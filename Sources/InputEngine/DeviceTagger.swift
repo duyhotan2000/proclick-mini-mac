@@ -15,6 +15,13 @@ public func monotonicNow() -> TimeInterval {
     TimeInterval(clock_gettime_nsec_np(CLOCK_UPTIME_RAW)) / 1_000_000_000
 }
 
+/// Converts mach absolute time (the clock HID timestamps and `monotonicNow` use) to seconds.
+func machSeconds(_ ticks: UInt64) -> TimeInterval {
+    var timebase = mach_timebase_info_data_t()
+    mach_timebase_info(&timebase)
+    return TimeInterval(ticks) * TimeInterval(timebase.numer) / TimeInterval(timebase.denom) / 1_000_000_000
+}
+
 /// Listens to the Pro Click Mini's raw HID values (without seizing the device), so the
 /// event tap can tell its events apart from the trackpad's and other mice.
 public final class DeviceTagger: @unchecked Sendable {
@@ -52,7 +59,8 @@ public final class DeviceTagger: @unchecked Sendable {
             let tagger = Unmanaged<DeviceTagger>.fromOpaque(context).takeUnretainedValue()
             tagger.receive(value)
         }, context)
-        IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+        // Same modes as the event tap, so HID values never queue up behind it.
+        IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetCurrent(), CFRunLoopMode.commonModes.rawValue)
         let result = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
         guard result == kIOReturnSuccess else { throw StartError.openFailed(result) }
         self.manager = manager
@@ -81,8 +89,10 @@ public final class DeviceTagger: @unchecked Sendable {
 
     private func receive(_ value: IOHIDValue) {
         let element = IOHIDValueGetElement(value)
+        // Stamp with when the mouse reported it, not when we got to it.
         record(HIDValue(usagePage: Int(IOHIDElementGetUsagePage(element)), usage: Int(IOHIDElementGetUsage(element)),
-                        value: IOHIDValueGetIntegerValue(value), timestamp: clock()))
+                        value: IOHIDValueGetIntegerValue(value),
+                        timestamp: machSeconds(IOHIDValueGetTimeStamp(value))))
     }
 
     func record(_ v: HIDValue) {

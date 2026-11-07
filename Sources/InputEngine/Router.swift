@@ -35,3 +35,34 @@ public func route(_ input: RoutedInput, tagged: Bool, table: MappingTable,
         return down && action != .disabled ? .consumeAndRun(action) : .consume
     }
 }
+
+/// `route` plus the state it needs across events: tilt debouncing, and which button presses
+/// were swallowed, so each release is handled exactly like its press. Tagging the press and
+/// the release separately could otherwise swallow a release whose press reached the app,
+/// leaving that button stuck down system-wide.
+public struct InputRouter: Sendable {
+    public var table: MappingTable
+    var debouncer = TiltDebouncer()
+    var swallowedPresses: Set<ButtonID> = []
+
+    public init(table: MappingTable) {
+        self.table = table
+    }
+
+    public mutating func route(_ input: RoutedInput, tagged: Bool, frontApp: String? = nil) -> RouteOutcome {
+        if case .button(let id, down: false) = input {
+            return swallowedPresses.remove(id) != nil ? .consume : .pass
+        }
+        let outcome = routeEvent(input, tagged: tagged, table: table, debouncer: &debouncer, frontApp: frontApp)
+        if case .button(let id, down: true) = input, outcome != .pass {
+            swallowedPresses.insert(id)
+        }
+        return outcome
+    }
+}
+
+/// The free `route`, reachable from inside `InputRouter.route`, which shadows its name.
+private func routeEvent(_ input: RoutedInput, tagged: Bool, table: MappingTable, debouncer: inout TiltDebouncer,
+                        frontApp: String?) -> RouteOutcome {
+    route(input, tagged: tagged, table: table, debouncer: &debouncer, frontApp: frontApp)
+}

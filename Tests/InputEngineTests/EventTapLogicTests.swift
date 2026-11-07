@@ -43,3 +43,8 @@ final class TestClock: @unchecked Sendable {
     clock.now = 0.2
     #expect(tagger.lastButton(within: 0.05) == nil)
 }
+
+@Test func machSecondsMatchesMonotonicClock() {
+    let viaMach = machSeconds(mach_absolute_time())
+    #expect(abs(viaMach - monotonicNow()) < 0.01)
+}

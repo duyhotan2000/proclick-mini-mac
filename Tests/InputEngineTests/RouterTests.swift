@@ -82,3 +82,28 @@ import Testing
     #expect(route(.button(.button4, down: true), tagged: true, table: .default, debouncer: &d,
                   frontApp: nil) == .pass)
 }
+
+private func remapped() -> MappingTable {
+    var t = MappingTable.default
+    t.actions[.left] = .missionControl
+    return t
+}
+
+@Test func releasePassesWhenPressPassed() {
+    var r = InputRouter(table: remapped())
+    #expect(r.route(.button(.left, down: true), tagged: false) == .pass)   // HID value arrived late
+    #expect(r.route(.button(.left, down: false), tagged: true) == .pass)   // must not strand the down
+}
+
+@Test func releaseConsumedWhenPressConsumed() {
+    var r = InputRouter(table: remapped())
+    #expect(r.route(.button(.left, down: true), tagged: true) == .consumeAndRun(.missionControl))
+    #expect(r.route(.button(.left, down: false), tagged: false) == .consume)  // even if untagged
+    #expect(r.route(.button(.left, down: false), tagged: true) == .pass)      // already released
+}
+
+@Test func routerStillDebouncesTilts() {
+    var r = InputRouter(table: .default)
+    #expect(r.route(.horizontalScroll(pan: 1, at: 0), tagged: true) == .consumeAndRun(.nextDesktop))
+    #expect(r.route(.horizontalScroll(pan: 1, at: 0.05), tagged: true) == .consume)
+}

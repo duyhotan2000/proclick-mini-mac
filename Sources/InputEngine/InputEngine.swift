@@ -8,13 +8,16 @@ public final class InputEngine {
     /// How recently the mouse must have reported a HID value for an event to count as its own.
     public static let tagWindow: TimeInterval = 0.05
 
-    public var table: MappingTable = .default
+    public var table: MappingTable {
+        get { router.table }
+        set { router.table = newValue }
+    }
     /// Called for every classified event (for logging).
     public var onEvent: ((RoutedInput, _ tagged: Bool, RouteOutcome) -> Void)?
 
     let tagger: DeviceTagger
     let executor: ActionExecutor
-    private var debouncer = TiltDebouncer()
+    private var router = InputRouter(table: .default)
     private var tap: EventTap?
 
     public init(tagger: DeviceTagger, executor: ActionExecutor) {
@@ -46,8 +49,8 @@ public final class InputEngine {
     private func handle(_ type: CGEventType, _ event: CGEvent) -> CGEvent? {
         if event.getIntegerValueField(.eventSourceUserData) == syntheticEventMarker { return event }
         guard let (input, tagged) = classify(type, event) else { return event }
-        let outcome = route(input, tagged: tagged, table: table, debouncer: &debouncer,
-                            frontApp: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
+        let outcome = router.route(input, tagged: tagged,
+                                   frontApp: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
         onEvent?(input, tagged, outcome)
         switch outcome {
         case .pass: return event
