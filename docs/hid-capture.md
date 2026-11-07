@@ -17,3 +17,35 @@ Every write is followed by `proclick-probe read`.
 Conclusion: the keys `05 04 00 00` (sleep) and `0B 04 01 00` (DPI table, 38-byte
 payload) work on the Pro Click Mini over BLE. The mouse reads back 36 bytes; it
 accepts the marker byte written as `00`.
+
+## HID input capture (Task 6, 2026-11-07)
+
+Captured with `proclick-probe hid-capture 120` while the owner tilted the wheel
+and pressed each button.
+
+| Physical input | HID usage | Values |
+|---|---|---|
+| Tilt left | Consumer `0x0C` / AC Pan `0x238` | `-1` repeated |
+| Tilt right | Consumer `0x0C` / AC Pan `0x238` | `+1` repeated |
+| Vertical wheel | Generic Desktop `0x01` / Wheel `0x38` | ±1 |
+| Left / right click | Button `0x09` / 1, 2 | 1 down, 0 up |
+| Wheel click | Button `0x09` / 3 | 1 down, 0 up |
+| Back side button | Button `0x09` / 4 | 1 down, 0 up |
+| Forward side button | Button `0x09` / 5 | 1 down, 0 up |
+| Bottom button | — | no HID event (none exists, or it's the pairing button) |
+
+### Tilt pattern
+
+- **No first-repeat delay.** A tilt streams pan values every ~22 ms (≈45 Hz) from the very first report until it is released.
+- **Bursts recorded:**
+  - quick left: 202 ms, 11 values
+  - quick right: 506 ms, 26 values
+  - right held about 2 s: 1752 ms, 89 values
+- **Biggest gap inside a burst:** 34 ms.
+- **Zero values:** every movement report also carries AC Pan = 0, so pan **zeros must be ignored** when tagging and debouncing.
+
+**Debounce constant:** `TiltDebouncer.silenceWindow = 0.25` s. The rule was
+`max(250 ms, first-repeat delay + 50 ms)`; the first repeat comes about 22 ms
+after the first report, so 250 ms wins. That is about 7× the largest gap inside
+a burst, so a held tilt is never split into two switches. Two separate tilts
+need at least 250 ms between them to count twice.

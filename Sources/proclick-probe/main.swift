@@ -1,5 +1,6 @@
 // proclick-probe: hardware checks and recovery for the Razer Pro Click Mini.
 import Foundation
+import InputEngine
 import RazerBLE
 
 let usage = """
@@ -11,6 +12,7 @@ let usage = """
       restore-original [--yes]           write back the settings first read on 2026-11-06
       restore-factory [--yes]            write Razer's factory defaults (active 1600, sleep 300 s)
       snapshots                          list backups saved before each write
+      hid-capture <seconds>              print the mouse's raw HID values (buttons, wheel, tilt)
     Write commands print the planned bytes and change nothing unless --yes is given.
     --force writes the command's field even if its value is unchanged (to test a write with known-good values).
     """
@@ -75,6 +77,11 @@ func runWrite(forcing field: MouseClient.Field? = nil, _ makeTarget: (MouseState
     exit(1)
 }
 
+/// Runs the main run loop (HID callbacks, event taps) for `seconds`.
+func spinRunLoop(seconds: Double) {
+    CFRunLoopRunInMode(.defaultMode, seconds, false)
+}
+
 let confirmed = CommandLine.arguments.contains("--yes")
 let forced = CommandLine.arguments.contains("--force")
 let args = Array(CommandLine.arguments.dropFirst()).filter { $0 != "--yes" && $0 != "--force" }
@@ -112,6 +119,20 @@ case "snapshots":
     } catch {
         fail("couldn't list snapshots: \(error)")
     }
+case "hid-capture":
+    guard args.count == 2, let seconds = Double(args[1]) else { fail(usage, code: 2) }
+    let tagger = DeviceTagger()
+    let start = monotonicNow()
+    tagger.onValue = { v in
+        // Skip pointer motion (Generic Desktop X/Y); it would drown out everything else.
+        if v.usagePage == 0x01 && (v.usage == 0x30 || v.usage == 0x31) { return }
+        let ms = Int((v.timestamp - start) * 1000)
+        print(String(format: "t=%6d page=0x%02X usage=0x%03X value=%d", ms, v.usagePage, v.usage, v.value))
+        fflush(stdout)
+    }
+    do { try tagger.start() } catch { fail("couldn't open the mouse's HID device: \(error) (grant Input Monitoring?)") }
+    print("capturing for \(Int(seconds)) s…"); fflush(stdout)
+    spinRunLoop(seconds: seconds)
 default:
     fail(usage, code: 2)
 }
