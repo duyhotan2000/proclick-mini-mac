@@ -140,9 +140,19 @@ public final class AppModel: ObservableObject {
     }
 
     public func setAction(_ a: Action, for b: ButtonID) {
-        mapping.actions[b] = a
-        engine.table = mapping
-        if let data = try? JSONEncoder().encode(mapping) { defaults.set(data, forKey: Self.mappingKey) }
+        var table = mapping
+        table.actions[b] = a
+        save(table)
+    }
+
+    public func resetMapping() {
+        save(.default)
+    }
+
+    private func save(_ table: MappingTable) {
+        mapping = table
+        engine.table = table
+        if let data = try? JSONEncoder().encode(table) { defaults.set(data, forKey: Self.mappingKey) }
     }
 
     public func setLaunchAtLogin(_ on: Bool) throws {

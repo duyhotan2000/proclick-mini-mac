@@ -12,7 +12,7 @@ struct SettingsView: View {
                     + "In Karabiner › Devices, turn off “Modify events” for Pro Click Mini.")
             }
             TabView {
-                Text("Customize").tabItem { Text("Customize") }
+                CustomizeTab(model: model).tabItem { Text("Customize") }
                 Text("Performance").tabItem { Text("Performance") }
                 Text("Power").tabItem { Text("Power") }
             }
