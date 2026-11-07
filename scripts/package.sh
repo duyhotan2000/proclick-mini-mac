@@ -15,14 +15,11 @@ cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 
 rm -f "$DMG"
-# hdiutil intermittently fails with "Resource busy" while macOS indexes the fresh copy; retry.
-for attempt in 1 2 3 4 5; do
-    if hdiutil create -volname "ProClick Mini" -srcfolder "$STAGE" -fs HFS+ -format UDZO -quiet "$DMG"; then
-        break
-    fi
-    [ "$attempt" = 5 ] && { echo "error: hdiutil create kept failing" >&2; exit 1; }
-    sleep 2
-done
+# makehybrid writes the image without attaching a disk (hdiutil create needs one and often
+# fails with "Resource busy"); convert then compresses it.
+hdiutil makehybrid -hfs -hfs-volume-name "ProClick Mini" -o "$STAGE.raw.dmg" "$STAGE" >/dev/null
+hdiutil convert "$STAGE.raw.dmg" -format UDZO -o "$DMG" >/dev/null
+rm -f "$STAGE.raw.dmg"
 IDENTITY="ProClick Mini Dev"
 if security find-identity -v -p codesigning | grep -q "\"$IDENTITY\""; then
     codesign --force --sign "$IDENTITY" "$DMG"
