@@ -36,3 +36,11 @@ private func freshDefaults() -> UserDefaults {
     AppModel(defaults: defaults).spaceMethod = .controlArrow
     #expect(AppModel(defaults: defaults).spaceMethod == .controlArrow)
 }
+
+@MainActor @Test func batteryClearsWhenMouseDisconnects() async {
+    let model = AppModel(defaults: freshDefaults())
+    model.batteryChanged(50)
+    await model.connectionChanged(.disconnected)
+    #expect(model.batteryPercent == nil)
+    #expect(model.state == nil)
+}

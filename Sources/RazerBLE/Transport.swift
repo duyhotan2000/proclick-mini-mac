@@ -172,9 +172,14 @@ public final class CoreBluetoothTransport: NSObject, VendorTransport, @unchecked
             p.delegate = self
             central.connect(p)
         } else {
-            setState(.searching)
+            setState(Self.stateWhenNotFound(current: state))
             scheduleRetry()
         }
+    }
+
+    /// "Searching" until the mouse is first found; after it drops, stay "disconnected" while retrying.
+    static func stateWhenNotFound(current: ConnectionState) -> ConnectionState {
+        current == .disconnected ? .disconnected : .searching
     }
 
     private func scheduleRetry() {

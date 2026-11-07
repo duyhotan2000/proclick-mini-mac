@@ -66,10 +66,7 @@ public final class AppModel: ObservableObject {
         executor.dpi = { [weak self] step in Task { @MainActor in await self?.stepDPI(step) } }
         launchAtLogin = SMAppService.mainApp.status == .enabled
         tasks.append(Task { [weak self] in
-            for await c in transport.connectionState {
-                self?.connection = c
-                if case .connected = c { await self?.refresh() }
-            }
+            for await c in transport.connectionState { await self?.connectionChanged(c) }
         })
         tasks.append(Task { [weak self] in
             for await p in transport.batteryPercent { self?.batteryChanged(p) }
@@ -108,7 +105,18 @@ public final class AppModel: ObservableObject {
         }
     }
 
-    private func batteryChanged(_ percent: Int) {
+    func connectionChanged(_ c: ConnectionState) async {
+        connection = c
+        if case .connected = c {
+            await refresh()
+        } else {
+            // Don't show a stale battery level or DPI stages for a mouse that's gone.
+            batteryPercent = nil
+            state = nil
+        }
+    }
+
+    func batteryChanged(_ percent: Int) {
         batteryPercent = percent
         if lowBattery.update(percent: percent) && lowBatteryAlerts {
             LowBatteryNotifier.post(percent: percent)
