@@ -14,6 +14,7 @@ let usage = """
       snapshots                          list backups saved before each write
       hid-capture <seconds>              print the mouse's raw HID values (buttons, wheel, tilt)
       space next|prev [--keys]           switch one desktop (swipe animation, or Ctrl+arrow with --keys)
+      run-engine                         run the tilt/button engine with default mappings until Ctrl+C
     Write commands print the planned bytes and change nothing unless --yes is given.
     --force writes the command's field even if its value is unchanged (to test a write with known-good values).
     """
@@ -140,6 +141,19 @@ case "space":
     let switcher = SpaceSwitcher(method: keys ? .controlArrow : .dockSwipe)
     switcher.switchSpace(args[1] == "next" ? .right : .left)
     spinRunLoop(seconds: 0.8)  // let the delayed end-event re-sends go out
+case "run-engine":
+    if KarabinerCheck.grabsProClick() {
+        print("warning: Karabiner-Elements is set to modify the Pro Click Mini; tilts may not be detected")
+    }
+    let engine = InputEngine(tagger: DeviceTagger(), executor: ActionExecutor(spaces: SpaceSwitcher()))
+    engine.onEvent = { input, tagged, outcome in
+        print("\(input) tagged=\(tagged) → \(outcome)"); fflush(stdout)
+    }
+    do { try engine.start() } catch {
+        fail("couldn't start the engine: \(error) (grant Accessibility and Input Monitoring?)")
+    }
+    print("engine running; Ctrl+C to stop"); fflush(stdout)
+    while true { spinRunLoop(seconds: 3600) }
 default:
     fail(usage, code: 2)
 }

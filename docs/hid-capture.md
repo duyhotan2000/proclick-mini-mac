@@ -58,3 +58,15 @@ need at least 250 ms between them to count twice.
   Fixed in `DockSwipe.swipe` (left = −1, right = +1).
 - Default `SpaceMethod`: `.dockSwipe`. `.controlArrow` (Ctrl+←/→) stays as a fallback for a
   future macOS that ignores the CGEvent swipe fields.
+
+## Engine checks (Task 9, 2026-11-07, `proclick-probe run-engine`)
+
+| Check | Result |
+|---|---|
+| (a) one tilt right | exactly one desktop right ✔ |
+| (b) tilt held 3 s | exactly one desktop ✔ (0.25 s silence window holds) |
+| (c) trackpad two-finger horizontal scroll in Safari | scrolls normally, no desktop switch ✔ (never tagged) |
+| (d) side buttons | Chrome ✔ pass-through. Safari ✘: Safari ignores mouse buttons 4/5 natively, even with no app running. Fixed: in Safari/Finder pass-through side buttons send ⌘[ / ⌘] (owner's choice); elsewhere they pass through. Re-checked ✔ in Safari, Finder, Chrome |
+| (e) vertical wheel scroll | normal ✔ |
+
+All side-button presses were tagged as Pro Click Mini (HID button value arrives before the CGEvent).

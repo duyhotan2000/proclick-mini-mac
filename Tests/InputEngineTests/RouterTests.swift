@@ -64,3 +64,21 @@ import Testing
     #expect(ButtonID(hidButton: 5) == .button5)
     #expect(ButtonID(hidButton: 6) == nil)
 }
+
+@Test func sideButtonsBecomeBackForwardInSafari() {
+    var d = TiltDebouncer()
+    #expect(route(.button(.button4, down: true), tagged: true, table: .default, debouncer: &d,
+                  frontApp: "com.apple.Safari") == .consumeAndRun(.back))
+    #expect(route(.button(.button4, down: false), tagged: true, table: .default, debouncer: &d,
+                  frontApp: "com.apple.Safari") == .consume)
+    #expect(route(.button(.button5, down: true), tagged: true, table: .default, debouncer: &d,
+                  frontApp: "com.apple.finder") == .consumeAndRun(.forward))
+}
+
+@Test func sideButtonsPassThroughInOtherApps() {
+    var d = TiltDebouncer()
+    #expect(route(.button(.button4, down: true), tagged: true, table: .default, debouncer: &d,
+                  frontApp: "com.google.Chrome") == .pass)
+    #expect(route(.button(.button4, down: true), tagged: true, table: .default, debouncer: &d,
+                  frontApp: nil) == .pass)
+}

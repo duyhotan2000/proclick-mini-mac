@@ -14,9 +14,10 @@ public enum RouteOutcome: Equatable, Sendable {
 }
 
 /// Decides what happens to one input event. Only events from the Pro Click Mini (`tagged`)
-/// are ever consumed.
+/// are ever consumed. `frontApp` is the frontmost app's bundle id: apps that ignore mouse
+/// buttons 4/5 get pass-through side buttons as Back/Forward shortcuts instead.
 public func route(_ input: RoutedInput, tagged: Bool, table: MappingTable,
-                  debouncer: inout TiltDebouncer) -> RouteOutcome {
+                  debouncer: inout TiltDebouncer, frontApp: String? = nil) -> RouteOutcome {
     guard tagged else { return .pass }
     switch input {
     case .horizontalScroll(let pan, let time):
@@ -26,7 +27,10 @@ public func route(_ input: RoutedInput, tagged: Bool, table: MappingTable,
         guard debouncer.handle(pan: pan, at: time) != nil, action != .disabled else { return .consume }
         return .consumeAndRun(action)
     case .button(let id, let down):
-        let action = table.action(for: id)
+        var action = table.action(for: id)
+        if action == .passThrough, let frontApp, BackForward.appsIgnoringSideButtons.contains(frontApp) {
+            action = id == .button4 ? .back : id == .button5 ? .forward : action
+        }
         if action == .passThrough { return .pass }
         return down && action != .disabled ? .consumeAndRun(action) : .consume
     }

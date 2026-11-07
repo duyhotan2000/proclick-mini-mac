@@ -24,6 +24,9 @@ public final class DeviceTagger: @unchecked Sendable {
 
     let clock: @Sendable () -> TimeInterval
     private var manager: IOHIDManager?
+    private let lock = NSLock()
+    private var pan: HIDValue?
+    private var button: HIDValue?
 
     public init(vendorID: Int = 0x1532, productID: Int = 0x009B,
                 clock: @escaping @Sendable () -> TimeInterval = monotonicNow) {
@@ -61,10 +64,33 @@ public final class DeviceTagger: @unchecked Sendable {
         self.manager = nil
     }
 
+    /// The last non-zero tilt (AC Pan) value, if it arrived within `window` seconds.
+    public func lastPan(within window: TimeInterval) -> HIDValue? {
+        lock.withLock { fresh(pan, within: window) }
+    }
+
+    /// The last button press or release, if it arrived within `window` seconds.
+    public func lastButton(within window: TimeInterval) -> HIDValue? {
+        lock.withLock { fresh(button, within: window) }
+    }
+
+    private func fresh(_ v: HIDValue?, within window: TimeInterval) -> HIDValue? {
+        guard let v, clock() - v.timestamp <= window else { return nil }
+        return v
+    }
+
     private func receive(_ value: IOHIDValue) {
         let element = IOHIDValueGetElement(value)
-        let v = HIDValue(usagePage: Int(IOHIDElementGetUsagePage(element)), usage: Int(IOHIDElementGetUsage(element)),
-                         value: IOHIDValueGetIntegerValue(value), timestamp: clock())
+        record(HIDValue(usagePage: Int(IOHIDElementGetUsagePage(element)), usage: Int(IOHIDElementGetUsage(element)),
+                        value: IOHIDValueGetIntegerValue(value), timestamp: clock()))
+    }
+
+    func record(_ v: HIDValue) {
+        lock.withLock {
+            // Pan = 0 rides on every motion report; only a real tilt tags.
+            if v.usagePage == 0x0C && v.usage == 0x238 && v.value != 0 { pan = v }
+            if v.usagePage == 0x09 { button = v }
+        }
         onValue?(v)
     }
 }

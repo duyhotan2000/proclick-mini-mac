@@ -25,8 +25,12 @@ public final class ActionExecutor: @unchecked Sendable {
         case .leftClick: click(.left)
         case .rightClick: click(.right)
         case .middleClick: click(.center)
-        case .back: click(.center, buttonNumber: 3)
-        case .forward: click(.center, buttonNumber: 4)
+        case .back, .forward:
+            if let key = BackForward.shortcutKey(action, frontApp: frontApp()) {
+                KeyPoster.press(keyCode: key, flags: .maskCommand)
+            } else {
+                click(.center, buttonNumber: action == .back ? 3 : 4)
+            }
         case .previousDesktop: spaces.switchSpace(.left)
         case .nextDesktop: spaces.switchSpace(.right)
         case .missionControl: openApp("com.apple.exposelauncher")
@@ -40,6 +44,10 @@ public final class ActionExecutor: @unchecked Sendable {
         case .dpiCycle: dpi?(.cycle)
         case .media(let key): MediaKeyPoster.press(key)
         }
+    }
+
+    private func frontApp() -> String? {
+        NSWorkspace.shared.frontmostApplication?.bundleIdentifier
     }
 
     private func openApp(_ bundleID: String) {
@@ -60,6 +68,22 @@ public final class ActionExecutor: @unchecked Sendable {
             if let buttonNumber { e.setIntegerValueField(.mouseEventButtonNumber, value: buttonNumber) }
             e.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
             e.post(tap: .cgSessionEventTap)
+        }
+    }
+}
+
+/// Some apps (Safari, Finder) ignore mouse buttons 4/5; there Back/Forward are ⌘[ / ⌘].
+public enum BackForward {
+    public static let appsIgnoringSideButtons: Set<String> = [
+        "com.apple.Safari", "com.apple.SafariTechnologyPreview", "com.apple.finder",
+    ]
+
+    static func shortcutKey(_ action: Action, frontApp: String?) -> CGKeyCode? {
+        guard let frontApp, appsIgnoringSideButtons.contains(frontApp) else { return nil }
+        switch action {
+        case .back: return 33     // kVK_ANSI_LeftBracket
+        case .forward: return 30  // kVK_ANSI_RightBracket
+        default: return nil
         }
     }
 }
