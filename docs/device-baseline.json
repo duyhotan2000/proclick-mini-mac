@@ -1,0 +1,16 @@
+{
+  "_note": "Pro Click Mini settings as first read over Bluetooth on 2026-11-06. DPI read payload was 36 bytes (no marker byte).",
+  "dpi": {
+    "activeID": 4,
+    "marker": 0,
+    "stages": [
+      { "id": 1, "x": 400, "y": 400 },
+      { "id": 2, "x": 800, "y": 800 },
+      { "id": 3, "x": 1600, "y": 1600 },
+      { "id": 4, "x": 3200, "y": 3200 },
+      { "id": 5, "x": 6400, "y": 6400 }
+    ],
+    "tailSlots": []
+  },
+  "sleepSeconds": 300
+}
