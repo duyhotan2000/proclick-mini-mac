@@ -49,3 +49,12 @@ and pressed each button.
 after the first report, so 250 ms wins. That is about 7× the largest gap inside
 a burst, so a held tilt is never split into two switches. Two separate tilts
 need at least 250 ms between them to count twice.
+
+## Desktop switching (Task 8, 2026-11-07, macOS 26.7.1)
+
+- `proclick-probe space next` / `space prev` with the synthetic Dock swipe moved exactly one
+  desktop each way, with the native three-finger-swipe slide animation.
+- First run went the wrong way: a **negative** origin offset moves to the desktop on the left.
+  Fixed in `DockSwipe.swipe` (left = −1, right = +1).
+- Default `SpaceMethod`: `.dockSwipe`. `.controlArrow` (Ctrl+←/→) stays as a fallback for a
+  future macOS that ignores the CGEvent swipe fields.

@@ -13,6 +13,7 @@ let usage = """
       restore-factory [--yes]            write Razer's factory defaults (active 1600, sleep 300 s)
       snapshots                          list backups saved before each write
       hid-capture <seconds>              print the mouse's raw HID values (buttons, wheel, tilt)
+      space next|prev [--keys]           switch one desktop (swipe animation, or Ctrl+arrow with --keys)
     Write commands print the planned bytes and change nothing unless --yes is given.
     --force writes the command's field even if its value is unchanged (to test a write with known-good values).
     """
@@ -84,7 +85,7 @@ func spinRunLoop(seconds: Double) {
 
 let confirmed = CommandLine.arguments.contains("--yes")
 let forced = CommandLine.arguments.contains("--force")
-let args = Array(CommandLine.arguments.dropFirst()).filter { $0 != "--yes" && $0 != "--force" }
+let args = Array(CommandLine.arguments.dropFirst()).filter { !["--yes", "--force", "--keys"].contains($0) }
 
 switch args.first {
 case "read":
@@ -133,6 +134,12 @@ case "hid-capture":
     do { try tagger.start() } catch { fail("couldn't open the mouse's HID device: \(error) (grant Input Monitoring?)") }
     print("capturing for \(Int(seconds)) s…"); fflush(stdout)
     spinRunLoop(seconds: seconds)
+case "space":
+    guard args.count == 2, ["next", "prev"].contains(args[1]) else { fail(usage, code: 2) }
+    let keys = CommandLine.arguments.contains("--keys")
+    let switcher = SpaceSwitcher(method: keys ? .controlArrow : .dockSwipe)
+    switcher.switchSpace(args[1] == "next" ? .right : .left)
+    spinRunLoop(seconds: 0.8)  // let the delayed end-event re-sends go out
 default:
     fail(usage, code: 2)
 }
