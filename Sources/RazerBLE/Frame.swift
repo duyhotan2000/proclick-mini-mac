@@ -35,6 +35,19 @@ public func encodeRequest(req: UInt8, key: Key, payload: [UInt8] = []) -> [UInt8
     [req, UInt8(payload.count), 0, 0] + key.bytes + payload
 }
 
+/// Maximum bytes per payload write (OpenSnek BLE_PROTOCOL.md §7.2).
+public let payloadChunkSize = 20
+
+/// The characteristic writes for one request: the 8-byte header on its own, then the
+/// payload in ≤20-byte chunks. Sending header and payload in one write is rejected (status 03).
+public func requestWrites(req: UInt8, key: Key, payload: [UInt8] = []) -> [[UInt8]] {
+    let header = Array(encodeRequest(req: req, key: key, payload: payload).prefix(8))
+    let chunks = stride(from: 0, to: payload.count, by: payloadChunkSize).map {
+        Array(payload[$0..<min($0 + payloadChunkSize, payload.count)])
+    }
+    return [header] + chunks
+}
+
 /// Collects notify frames for one exchange and yields its payload.
 public struct Reassembler: Sendable {
     public enum Result: Equatable, Sendable {

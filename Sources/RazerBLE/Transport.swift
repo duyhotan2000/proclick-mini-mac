@@ -12,6 +12,8 @@ public enum TransportError: Error, Equatable {
     case timeout
     case status(Status)
     case bluetoothUnavailable(String)
+    /// The ATT write itself failed (as opposed to the mouse answering with an error status).
+    case writeRejected(String)
 }
 
 /// One request/response exchange with the mouse's Razer vendor GATT service.
@@ -134,8 +136,10 @@ public final class CoreBluetoothTransport: NSObject, VendorTransport, @unchecked
                 let timeout = DispatchWorkItem { [self] in finishPending(.failure(TransportError.timeout)) }
                 pending = Pending(reassembler: Reassembler(req: req), continuation: continuation, timeout: timeout)
                 queue.asyncAfter(deadline: .now() + Self.exchangeTimeout, execute: timeout)
-                peripheral.writeValue(Data(encodeRequest(req: req, key: key, payload: payload)),
-                                      for: writeCharacteristic, type: .withResponse)
+                // CoreBluetooth sends queued write-with-response requests in order.
+                for chunk in requestWrites(req: req, key: key, payload: payload) {
+                    peripheral.writeValue(Data(chunk), for: writeCharacteristic, type: .withResponse)
+                }
             }
         }
     }
@@ -244,7 +248,7 @@ extension CoreBluetoothTransport: CBPeripheralDelegate {
 
     public func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic,
                            error: Error?) {
-        if error != nil { finishPending(.failure(TransportError.status(.error))) }
+        if let error { finishPending(.failure(TransportError.writeRejected(error.localizedDescription))) }
     }
 
     public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic,

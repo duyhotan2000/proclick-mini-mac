@@ -36,3 +36,23 @@ import Testing
     var r = Reassembler(req: 0x34)
     #expect(r.feed(hex("34 00 00 00 00 00 00 02")) == .payload([]))
 }
+
+// OpenSnek BLE_PROTOCOL.md §7.2: header alone, then payload in ≤20-byte chunks.
+@Test func splitsWriteIntoHeaderAndChunks() {
+    let payload = hex("03 03 01 20 03 20 03 00 00 02 40 06 40 06 00 00 03 80 0C 80 0C 00 00 04 00 19 00 19 00 00 05 E0 2E E0 2E 00 03 00")
+    let writes = requestWrites(req: 0x35, key: .dpiTableWrite, payload: payload)
+    #expect(writes == [
+        hex("35 26 00 00 0B 04 01 00"),
+        hex("03 03 01 20 03 20 03 00 00 02 40 06 40 06 00 00 03 80 0C 80"),
+        hex("0C 00 00 04 00 19 00 19 00 00 05 E0 2E E0 2E 00 03 00"),
+    ])
+}
+
+@Test func readIsASingleHeaderWrite() {
+    #expect(requestWrites(req: 0x45, key: .sleep) == [hex("45 00 00 00 05 84 00 00")])
+}
+
+@Test func sleepWriteSendsPayloadSeparately() {
+    #expect(requestWrites(req: 0x40, key: .sleepWrite, payload: [0x2C, 0x01])
+        == [hex("40 02 00 00 05 04 00 00"), [0x2C, 0x01]])
+}
