@@ -15,8 +15,7 @@ struct ProClickMiniApp: App {
         MenuBarExtra {
             MenuBarView(model: model)
         } label: {
-            Label(model.batteryPercent.map { "\($0)%" } ?? "", systemImage: "computermouse")
-                .labelStyle(.titleAndIcon)
+            Image(systemName: "computermouse")
         }
         Window("ProClick Mini", id: "settings") {
             SettingsView(model: model)

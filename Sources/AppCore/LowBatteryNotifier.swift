@@ -25,7 +25,8 @@ public struct LowBatteryNotifier: Sendable {
             let content = UNMutableNotificationContent()
             content.title = "Pro Click Mini battery low"
             content.body = "\(percent)% left. Replace the AA battery soon."
-            center.add(UNNotificationRequest(identifier: "low-battery", content: content, trigger: nil))
+            UNUserNotificationCenter.current()
+                .add(UNNotificationRequest(identifier: "low-battery", content: content, trigger: nil))
         }
     }
 }
