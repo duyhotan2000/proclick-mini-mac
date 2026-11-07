@@ -28,6 +28,7 @@ public struct SpaceSwitcher: Sendable {
 /// (github.com/noah-nuebling/mac-mouse-fix, Helper/Core/Touch/TouchSimulator.m,
 /// `postDockSwipeEventWithDelta:type:phase:invertedFromDevice:`, pre-macOS-27 path).
 /// macOS 27 ignores these CGEvent fields and needs an attached IOHIDEvent instead.
+/// Licensed under the MMF License, not this project's MIT license; see THIRD_PARTY_NOTICES.md.
 enum DockSwipe {
     // ---- Private CGEvent fields (from TouchSimulator.m) ----
     static let fieldEventType = CGEventField(rawValue: 55)!       // 29 = gesture, 30 = "magnify"/dock

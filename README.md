@@ -56,4 +56,5 @@ Design notes, the implementation plan and hardware findings are in `docs/`.
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE), except the Dock-swipe code derived from Mac Mouse Fix, which
+stays under the MMF License. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
