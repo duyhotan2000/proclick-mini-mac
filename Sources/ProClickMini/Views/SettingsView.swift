@@ -13,8 +13,8 @@ struct SettingsView: View {
             }
             TabView {
                 CustomizeTab(model: model).tabItem { Text("Customize") }
-                Text("Performance").tabItem { Text("Performance") }
-                Text("Power").tabItem { Text("Power") }
+                PerformanceTab(model: model).tabItem { Text("Performance") }
+                PowerTab(model: model).tabItem { Text("Power") }
             }
             .padding()
         }

@@ -70,3 +70,13 @@ need at least 250 ms between them to count twice.
 | (e) vertical wheel scroll | normal ✔ |
 
 All side-button presses were tagged as Pro Click Mini (HID button value arrives before the CGEvent).
+
+## App write checks (Task 12, 2026-11-07, owner drove the app)
+
+| Step | Result (verified with `proclick-probe read`) |
+|---|---|
+| Performance: stage 4 → 2400, Apply | "Saved to mouse"; mouse reads 400,800,1600,2400,6400, active 4 ✔ |
+| Power: Restore My Original Settings | back to 400,800,1600,3200,6400, active 4 ✔ |
+| Power: sleep 10 min, then 5 min | both saved; mouse reads sleep 300 s ✔ |
+
+One backup snapshot was written before each of the 4 writes.

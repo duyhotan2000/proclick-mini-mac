@@ -22,9 +22,13 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var karabinerConflict = false
     @Published public private(set) var isWriting = false
     @Published public private(set) var launchAtLogin = false
+    @Published public var lowBatteryAlerts: Bool {
+        didSet { defaults.set(lowBatteryAlerts, forKey: Self.lowBatteryKey) }
+    }
 
     static let mappingKey = "mapping.v1"
     static let spaceMethodKey = "spaceMethod"
+    static let lowBatteryKey = "lowBatteryAlerts"
 
     let defaults: UserDefaults
     let executor: ActionExecutor
@@ -34,12 +38,14 @@ public final class AppModel: ObservableObject {
     private var tasks: [Task<Void, Never>] = []
     private var pollTimer: Timer?
     private var promptedInputMonitoring = false
+    private var lowBattery = LowBatteryNotifier()
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         let method = defaults.string(forKey: Self.spaceMethodKey).flatMap(SpaceMethod.init(rawValue:)) ?? .dockSwipe
         spaceMethod = method
         mapping = Self.loadMapping(defaults)
+        lowBatteryAlerts = defaults.object(forKey: Self.lowBatteryKey) as? Bool ?? true
         executor = ActionExecutor(spaces: SpaceSwitcher(method: method))
         engine = InputEngine(tagger: DeviceTagger(), executor: executor)
         engine.table = mapping
@@ -66,7 +72,7 @@ public final class AppModel: ObservableObject {
             }
         })
         tasks.append(Task { [weak self] in
-            for await p in transport.batteryPercent { self?.batteryPercent = p }
+            for await p in transport.batteryPercent { self?.batteryChanged(p) }
         })
         _ = Permissions.accessibilityTrusted(prompt: true)
         updatePermissions()
@@ -96,7 +102,14 @@ public final class AppModel: ObservableObject {
         guard let client else { return }
         if let s = try? await client.readState() { state = s }
         if batteryPercent == nil, let raw = try? await client.readBatteryRaw() {
-            batteryPercent = Int((Double(raw) * 100 / 255).rounded())
+            batteryChanged(Int((Double(raw) * 100 / 255).rounded()))
+        }
+    }
+
+    private func batteryChanged(_ percent: Int) {
+        batteryPercent = percent
+        if lowBattery.update(percent: percent) && lowBatteryAlerts {
+            LowBatteryNotifier.post(percent: percent)
         }
     }
 
