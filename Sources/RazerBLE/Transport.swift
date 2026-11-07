@@ -98,6 +98,11 @@ public final class CoreBluetoothTransport: NSObject, VendorTransport, @unchecked
     }
 
     /// Battery percentage from the standard GATT Battery Level characteristic.
+    /// Whether the Mac's Bluetooth radio is on.
+    public var isPoweredOn: Bool {
+        queue.sync { central.state == .poweredOn }
+    }
+
     public var batteryPercent: AsyncStream<Int> {
         AsyncStream { continuation in
             let id = UUID()

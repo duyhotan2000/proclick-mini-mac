@@ -12,7 +12,7 @@ public let syntheticEventMarker: Int64 = 0x5052_434C  // "PRCL"
 /// Performs `Action`s. Call on the main thread.
 public final class ActionExecutor: @unchecked Sendable {
     public var spaces: SpaceSwitcher
-    let dpi: (@Sendable (DPIStep) -> Void)?
+    public var dpi: (@Sendable (DPIStep) -> Void)?
 
     public init(spaces: SpaceSwitcher, dpi: (@Sendable (DPIStep) -> Void)? = nil) {
         self.spaces = spaces
