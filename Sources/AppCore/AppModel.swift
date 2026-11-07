@@ -93,8 +93,10 @@ public final class AppModel: ObservableObject {
                                      poweredOn: transport?.isPoweredOn ?? false, inputMonitoring: listening)
         karabinerConflict = KarabinerCheck.grabsProClick()
         // The engine only needs Accessibility and Input Monitoring, not Bluetooth.
-        if trusted && listening && !engine.isRunning {
-            try? engine.start()
+        switch engineChange(running: engine.isRunning, trusted: trusted, listening: listening) {
+        case .start: try? engine.start()
+        case .stop: engine.stop()
+        case .none: break
         }
     }
 

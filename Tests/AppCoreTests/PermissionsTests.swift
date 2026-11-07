@@ -32,3 +32,11 @@ import Testing
     #expect(onboardingState(accessibilityTrusted: false, bluetooth: .allowedAlways, poweredOn: true,
                             inputMonitoring: false) == .needsAccessibility)
 }
+
+@Test func engineFollowsPermissions() {
+    #expect(engineChange(running: false, trusted: true, listening: true) == .start)
+    #expect(engineChange(running: true, trusted: false, listening: true) == .stop)
+    #expect(engineChange(running: true, trusted: true, listening: false) == .stop)
+    #expect(engineChange(running: true, trusted: true, listening: true) == .none)
+    #expect(engineChange(running: false, trusted: false, listening: true) == .none)
+}

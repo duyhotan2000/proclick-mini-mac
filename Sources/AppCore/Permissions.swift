@@ -43,3 +43,16 @@ public enum Permissions {
         }
     }
 }
+
+public enum EngineChange: Equatable, Sendable {
+    case start, stop, none
+}
+
+/// The engine runs exactly while Accessibility and Input Monitoring are granted. Stopping it on
+/// revocation lets a re-grant create a fresh, working event tap.
+public func engineChange(running: Bool, trusted: Bool, listening: Bool) -> EngineChange {
+    let allowed = trusted && listening
+    if allowed && !running { return .start }
+    if !allowed && running { return .stop }
+    return .none
+}
