@@ -22,6 +22,11 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var karabinerConflict = false
     @Published public private(set) var isWriting = false
     @Published public private(set) var launchAtLogin = false
+    /// Connected Pro Click Minis; the picker shows when there's more than one.
+    @Published public private(set) var mice: [MouseInfo] = []
+    @Published public private(set) var selectedMouse: UUID?
+    /// Why the input engine couldn't start, when permissions look fine.
+    @Published public private(set) var engineProblem: String?
     @Published public var lowBatteryAlerts: Bool {
         didSet { defaults.set(lowBatteryAlerts, forKey: Self.lowBatteryKey) }
     }
@@ -29,6 +34,7 @@ public final class AppModel: ObservableObject {
     static let mappingKey = "mapping.v1"
     static let spaceMethodKey = "spaceMethod"
     static let lowBatteryKey = "lowBatteryAlerts"
+    static let selectedMouseKey = "mouse.selected"
 
     let defaults: UserDefaults
     let executor: ActionExecutor
@@ -46,6 +52,7 @@ public final class AppModel: ObservableObject {
         spaceMethod = method
         mapping = Self.loadMapping(defaults)
         lowBatteryAlerts = defaults.object(forKey: Self.lowBatteryKey) as? Bool ?? true
+        selectedMouse = defaults.string(forKey: Self.selectedMouseKey).flatMap(UUID.init(uuidString:))
         executor = ActionExecutor(spaces: SpaceSwitcher(method: method))
         engine = InputEngine(tagger: DeviceTagger(), executor: executor)
         engine.table = mapping
@@ -60,7 +67,7 @@ public final class AppModel: ObservableObject {
     /// Connects to the mouse, starts the input engine once permitted, and keeps both up to date.
     public func start() {
         guard transport == nil else { return }
-        let transport = CoreBluetoothTransport()
+        let transport = CoreBluetoothTransport(preferred: selectedMouse)
         self.transport = transport
         client = MouseClient(transport: transport)
         executor.dpi = { [weak self] step in Task { @MainActor in await self?.stepDPI(step) } }
@@ -70,6 +77,9 @@ public final class AppModel: ObservableObject {
         })
         tasks.append(Task { [weak self] in
             for await p in transport.batteryPercent { self?.batteryChanged(p) }
+        })
+        tasks.append(Task { [weak self] in
+            for await list in transport.connectedMice { self?.mice = list }
         })
         _ = Permissions.accessibilityTrusted(prompt: true)
         updatePermissions()
@@ -91,15 +101,43 @@ public final class AppModel: ObservableObject {
         karabinerConflict = KarabinerCheck.grabsProClick()
         // The engine only needs Accessibility and Input Monitoring, not Bluetooth.
         switch engineChange(running: engine.isRunning, trusted: trusted, listening: listening) {
-        case .start: try? engine.start()
-        case .stop: engine.stop()
-        case .none: break
+        case .start:
+            do {
+                try engine.start()
+                engineProblem = nil
+            } catch {
+                engineStartFailed("Tilt switching couldn't start (\(error)). Try turning ProClick Mini off and on "
+                    + "in Accessibility and Input Monitoring, then reopen the app.")
+            }
+        case .stop:
+            engine.stop()
+        case .none:
+            break
         }
+    }
+
+    func engineStartFailed(_ message: String) {
+        engineProblem = message
+    }
+
+    public var needsAttention: Bool {
+        AppCore.needsAttention(onboarding: onboarding, engineProblem: engineProblem)
+    }
+
+    /// Use this Pro Click Mini for settings, battery and resets (remembered across launches).
+    public func select(_ id: UUID) {
+        selectedMouse = id
+        defaults.set(id.uuidString, forKey: Self.selectedMouseKey)
+        transport?.select(id)
     }
 
     public func refresh() async {
         guard let client else { return }
-        if let s = try? await client.readState() { state = s }
+        if let s = try? await client.readState() {
+            state = s
+            // The first settings read from each mouse are what "Restore My Original Settings" restores.
+            if let id = transport?.currentMouseID { _ = try? SnapshotStore.default.saveOriginalIfMissing(s, mouse: id) }
+        }
         if batteryPercent == nil, let raw = try? await client.readBatteryRaw() {
             batteryChanged(Int((Double(raw) * 100 / 255).rounded()))
         }
@@ -128,7 +166,11 @@ public final class AppModel: ObservableObject {
     }
 
     public func restoreOriginal() async {
-        await write { await $0.restoreOriginal() }
+        if let id = transport?.currentMouseID, let original = SnapshotStore.default.original(for: id) {
+            await apply(original)
+        } else {
+            await write { await $0.restoreOriginal() }
+        }
     }
 
     public func restoreFactory() async {

@@ -24,3 +24,13 @@ func tempDir() -> URL {
 @Test func latestIsNilWhenEmpty() throws {
     #expect(try SnapshotStore(directory: tempDir()).latest() == nil)
 }
+
+@Test func originalIsSavedOnlyOncePerMouse() throws {
+    let store = SnapshotStore(directory: tempDir())
+    let mouse = UUID()
+    #expect(try store.saveOriginalIfMissing(Defaults.baseline, mouse: mouse))
+    #expect(try !store.saveOriginalIfMissing(Defaults.factory, mouse: mouse))
+    #expect(store.original(for: mouse) == Defaults.baseline)
+    #expect(store.original(for: UUID()) == nil)
+    #expect(try store.list().isEmpty)  // originals aren't before-write snapshots
+}

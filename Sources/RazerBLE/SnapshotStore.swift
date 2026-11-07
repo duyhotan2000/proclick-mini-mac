@@ -44,6 +44,29 @@ public struct SnapshotStore: Sendable {
             }
     }
 
+    /// Records `s` as this mouse's original settings, unless one was recorded already.
+    /// Returns whether it saved.
+    @discardableResult
+    public func saveOriginalIfMissing(_ s: MouseState, mouse: UUID) throws -> Bool {
+        let url = originalURL(mouse)
+        guard !FileManager.default.fileExists(atPath: url.path) else { return false }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(s).write(to: url, options: .withoutOverwriting)
+        return true
+    }
+
+    /// The settings this mouse had when the app first saw it.
+    public func original(for mouse: UUID) -> MouseState? {
+        guard let data = try? Data(contentsOf: originalURL(mouse)) else { return nil }
+        return try? JSONDecoder().decode(MouseState.self, from: data)
+    }
+
+    private func originalURL(_ mouse: UUID) -> URL {
+        directory.appendingPathComponent("originals/\(mouse.uuidString).json")
+    }
+
     public func latest() throws -> MouseState? {
         guard let url = try list().last else { return nil }
         return try JSONDecoder().decode(MouseState.self, from: Data(contentsOf: url))

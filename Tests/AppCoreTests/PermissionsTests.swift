@@ -40,3 +40,9 @@ import Testing
     #expect(engineChange(running: true, trusted: true, listening: true) == .none)
     #expect(engineChange(running: false, trusted: false, listening: true) == .none)
 }
+
+@Test func attentionWhenNotReadyOrEngineFailed() {
+    #expect(!needsAttention(onboarding: .ready, engineProblem: nil))
+    #expect(needsAttention(onboarding: .needsAccessibility, engineProblem: nil))
+    #expect(needsAttention(onboarding: .ready, engineProblem: "tap failed"))
+}

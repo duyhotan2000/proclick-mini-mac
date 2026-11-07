@@ -28,6 +28,8 @@ public enum VendorUUID {
     public static let notify = CBUUID(string: "52401525-F97C-7F90-0E7F-6C6F4E36DB1C")
     static let batteryService = CBUUID(string: "180F")
     static let batteryLevel = CBUUID(string: "2A19")
+    static let deviceInfoService = CBUUID(string: "180A")
+    static let pnpID = CBUUID(string: "2A50")
 }
 
 /// Runs async operations one at a time, in call order.
@@ -65,6 +67,14 @@ public final class CoreBluetoothTransport: NSObject, VendorTransport, @unchecked
     private var batteryObservers: [UUID: AsyncStream<Int>.Continuation] = [:]
     private var lastBattery: Int?
     private var retryScheduled = false
+    private var writes = WriteTracker()
+    private var preferred: UUID?
+    private var mice: [MouseInfo] = []
+    private var miceObservers: [UUID: AsyncStream<[MouseInfo]>.Continuation] = [:]
+    /// Devices whose PnP ID showed they aren't a Pro Click Mini.
+    private var rejected: Set<UUID> = []
+    private var connectStartedAt: TimeInterval?
+    private var verifiedPnP: (vendor: UInt16, product: UInt16)?
 
     private struct Pending {
         var reassembler: Reassembler
@@ -72,7 +82,9 @@ public final class CoreBluetoothTransport: NSObject, VendorTransport, @unchecked
         let timeout: DispatchWorkItem
     }
 
-    public override init() {
+    /// `preferred` is the mouse to use when several Pro Click Minis are connected.
+    public init(preferred: UUID? = nil) {
+        self.preferred = preferred
         super.init()
         central = CBCentralManager(delegate: self, queue: queue)
     }
@@ -117,6 +129,46 @@ public final class CoreBluetoothTransport: NSObject, VendorTransport, @unchecked
         }
     }
 
+    /// The Pro Click Minis the Mac is connected to.
+    public var connectedMice: AsyncStream<[MouseInfo]> {
+        AsyncStream { continuation in
+            let id = UUID()
+            queue.async { [self] in
+                miceObservers[id] = continuation
+                continuation.yield(mice)
+            }
+            continuation.onTermination = { [weak self] _ in
+                guard let self else { return }
+                queue.async { self.miceObservers[id] = nil }
+            }
+        }
+    }
+
+    /// The mouse settings are read from and written to, once connected.
+    public var currentMouseID: UUID? {
+        queue.sync {
+            guard case .connected = state else { return nil }
+            return peripheral?.identifier
+        }
+    }
+
+    /// Vendor and product from the connected device's PnP ID, if it has been read.
+    public var pnpID: (vendor: UInt16, product: UInt16)? {
+        queue.sync { verifiedPnP }
+    }
+
+    /// Talk to this mouse from now on (it must be one of `connectedMice`).
+    public func select(_ id: UUID) {
+        queue.async { [self] in
+            preferred = id
+            guard let current = peripheral, current.identifier != id, mice.contains(where: { $0.id == id }) else {
+                return
+            }
+            abandon(current)
+            findPeripheral()
+        }
+    }
+
     /// Waits until the vendor channel is ready, or throws `.notConnected` after `timeout`.
     public func waitUntilConnected(timeout: TimeInterval) async throws {
         let deadline = Date().addingTimeInterval(timeout)
@@ -142,7 +194,9 @@ public final class CoreBluetoothTransport: NSObject, VendorTransport, @unchecked
                 pending = Pending(reassembler: Reassembler(req: req), continuation: continuation, timeout: timeout)
                 queue.asyncAfter(deadline: .now() + Self.exchangeTimeout, execute: timeout)
                 // CoreBluetooth sends queued write-with-response requests in order.
-                for chunk in requestWrites(req: req, key: key, payload: payload) {
+                let chunks = requestWrites(req: req, key: key, payload: payload)
+                writes.issue(chunks.count)
+                for chunk in chunks {
                     peripheral.writeValue(Data(chunk), for: writeCharacteristic, type: .withResponse)
                 }
             }
@@ -152,6 +206,7 @@ public final class CoreBluetoothTransport: NSObject, VendorTransport, @unchecked
     private func finishPending(_ result: Result<[UInt8], Error>) {
         guard let p = pending else { return }
         pending = nil
+        writes.finishExchange()
         p.timeout.cancel()
         p.continuation.resume(with: result)
     }
@@ -164,17 +219,43 @@ public final class CoreBluetoothTransport: NSObject, VendorTransport, @unchecked
         for o in stateObservers.values { o.yield(new) }
     }
 
+    /// Runs every `retryInterval`: refreshes the list of connected Pro Click Minis, connects to
+    /// the chosen one, and gives up on a connection attempt that has stalled.
     private func findPeripheral() {
         retryScheduled = false
-        guard central.state == .poweredOn, peripheral == nil else { return }
-        if let p = central.retrieveConnectedPeripherals(withServices: [VendorUUID.service]).first {
-            peripheral = p
-            p.delegate = self
-            central.connect(p)
-        } else {
-            setState(Self.stateWhenNotFound(current: state))
-            scheduleRetry()
+        defer { scheduleRetry() }
+        guard central.state == .poweredOn else { return }
+        let found = central.retrieveConnectedPeripherals(withServices: [VendorUUID.service])
+            .filter { MouseSelection.isCandidate(name: $0.name) && !rejected.contains($0.identifier) }
+        let list = found.map { MouseInfo(id: $0.identifier, name: $0.name ?? "Pro Click Mini") }
+        if list != mice {
+            mice = list
+            for o in miceObservers.values { o.yield(list) }
         }
+        if let current = peripheral {
+            if case .connected = state { return }
+            if let started = connectStartedAt,
+               MouseSelection.connectExpired(startedAt: started, now: ProcessInfo.processInfo.systemUptime) {
+                abandon(current)
+            }
+            return
+        }
+        guard let choice = MouseSelection.pick(list, preferred: preferred, rejected: rejected),
+              let p = found.first(where: { $0.identifier == choice.id }) else {
+            setState(Self.stateWhenNotFound(current: state))
+            return
+        }
+        peripheral = p
+        p.delegate = self
+        connectStartedAt = ProcessInfo.processInfo.systemUptime
+        central.connect(p)
+    }
+
+    /// Stops using `p` (it stays connected to macOS for normal mouse input).
+    private func abandon(_ p: CBPeripheral) {
+        p.delegate = nil
+        central.cancelPeripheralConnection(p)
+        dropPeripheral()
     }
 
     /// "Searching" until the mouse is first found; after it drops, stay "disconnected" while retrying.
@@ -191,7 +272,11 @@ public final class CoreBluetoothTransport: NSObject, VendorTransport, @unchecked
     private func dropPeripheral() {
         peripheral = nil
         writeCharacteristic = nil
+        connectStartedAt = nil
+        verifiedPnP = nil
+        lastBattery = nil
         finishPending(.failure(TransportError.notConnected))
+        writes.reset()
         setState(.disconnected)
         scheduleRetry()
     }
@@ -205,22 +290,27 @@ extension CoreBluetoothTransport: CBCentralManagerDelegate {
         default:
             peripheral = nil
             writeCharacteristic = nil
+            connectStartedAt = nil
             finishPending(.failure(TransportError.notConnected))
+            writes.reset()
             setState(.disconnected)
+            mice = []
+            for o in miceObservers.values { o.yield([]) }
         }
     }
 
     public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        peripheral.discoverServices([VendorUUID.service, VendorUUID.batteryService])
+        peripheral.discoverServices([VendorUUID.service, VendorUUID.batteryService, VendorUUID.deviceInfoService])
     }
 
+    // Callbacks for a mouse we already switched away from are ignored.
     public func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
-        dropPeripheral()
+        if peripheral.identifier == self.peripheral?.identifier { dropPeripheral() }
     }
 
     public func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral,
                                error: Error?) {
-        dropPeripheral()
+        if peripheral.identifier == self.peripheral?.identifier { dropPeripheral() }
     }
 }
 
@@ -231,6 +321,8 @@ extension CoreBluetoothTransport: CBPeripheralDelegate {
                 peripheral.discoverCharacteristics([VendorUUID.write, VendorUUID.notify], for: service)
             } else if service.uuid == VendorUUID.batteryService {
                 peripheral.discoverCharacteristics([VendorUUID.batteryLevel], for: service)
+            } else if service.uuid == VendorUUID.deviceInfoService {
+                peripheral.discoverCharacteristics([VendorUUID.pnpID], for: service)
             }
         }
     }
@@ -244,6 +336,8 @@ extension CoreBluetoothTransport: CBPeripheralDelegate {
             case VendorUUID.batteryLevel:
                 peripheral.readValue(for: c)
                 peripheral.setNotifyValue(true, for: c)
+            case VendorUUID.pnpID:
+                peripheral.readValue(for: c)
             default: break
             }
         }
@@ -252,13 +346,15 @@ extension CoreBluetoothTransport: CBPeripheralDelegate {
     public func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic,
                            error: Error?) {
         if characteristic.uuid == VendorUUID.notify, characteristic.isNotifying, writeCharacteristic != nil {
+            connectStartedAt = nil
             setState(.connected(name: peripheral.name ?? "Pro Click Mini"))
         }
     }
 
     public func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic,
                            error: Error?) {
-        if let error { finishPending(.failure(TransportError.writeRejected(error.localizedDescription))) }
+        guard writes.complete(), let error else { return }
+        finishPending(.failure(TransportError.writeRejected(error.localizedDescription)))
     }
 
     public func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic,
@@ -273,6 +369,15 @@ extension CoreBluetoothTransport: CBPeripheralDelegate {
             case .payload(let bytes)?: finishPending(.success(bytes))
             case .failed(let status)?: finishPending(.failure(TransportError.status(status)))
             case nil: break
+            }
+        case VendorUUID.pnpID:
+            guard let id = MouseSelection.parsePnPID([UInt8](value)) else { return }
+            if MouseSelection.isProClickMini(vendor: id.vendor, product: id.product) {
+                verifiedPnP = id
+            } else {
+                // Another Razer device sharing the vendor service: never talk to it again.
+                rejected.insert(peripheral.identifier)
+                abandon(peripheral)
             }
         case VendorUUID.batteryLevel:
             guard let level = value.first else { return }

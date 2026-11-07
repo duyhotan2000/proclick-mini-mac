@@ -56,3 +56,8 @@ public func engineChange(running: Bool, trusted: Bool, listening: Bool) -> Engin
     if !allowed && running { return .stop }
     return .none
 }
+
+/// Whether the menu should warn that tilt switching isn't working yet.
+public func needsAttention(onboarding: OnboardingState, engineProblem: String?) -> Bool {
+    onboarding != .ready || engineProblem != nil
+}

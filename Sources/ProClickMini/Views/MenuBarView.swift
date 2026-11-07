@@ -7,7 +7,18 @@ struct MenuBarView: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
+        if model.needsAttention {
+            Button("⚠︎ Tilt switching needs attention — Open Settings…") { openSettings() }
+        }
         Text(statusText)
+        if model.mice.count > 1 {
+            Picker("Mouse", selection: Binding(get: { model.selectedMouse ?? model.mice[0].id },
+                                               set: { model.select($0) })) {
+                ForEach(Array(model.mice.enumerated()), id: \.element.id) { i, mouse in
+                    Text(MouseLabel.text(mouse, index: i)).tag(mouse.id)
+                }
+            }
+        }
         if let state = model.state {
             Picker("DPI", selection: dpiBinding(state)) {
                 ForEach(Array(state.dpi.stages.enumerated()), id: \.offset) { i, stage in
@@ -17,10 +28,7 @@ struct MenuBarView: View {
             .disabled(model.isWriting)
         }
         Divider()
-        Button("Open Settings…") {
-            openWindow(id: "settings")
-            NSApp.activate(ignoringOtherApps: true)
-        }
+        Button("Open Settings…") { openSettings() }
         .keyboardShortcut(",")
         Toggle("Launch at Login", isOn: Binding(
             get: { model.launchAtLogin },
@@ -28,6 +36,11 @@ struct MenuBarView: View {
         Divider()
         Button("Quit ProClick Mini") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
+    }
+
+    private func openSettings() {
+        openWindow(id: "settings")
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private var statusText: String {
@@ -47,5 +60,12 @@ struct MenuBarView: View {
                 s.dpi.activeID = s.dpi.stages[index].id
                 Task { await model.apply(s) }
             })
+    }
+}
+
+/// Pro Click Minis all report the same name, so number them and add a short id.
+enum MouseLabel {
+    static func text(_ mouse: MouseInfo, index: Int) -> String {
+        "Pro Click Mini \(index + 1) (\(mouse.id.uuidString.prefix(4)))"
     }
 }

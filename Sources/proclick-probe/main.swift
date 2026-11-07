@@ -90,11 +90,17 @@ let args = Array(CommandLine.arguments.dropFirst()).filter { !["--yes", "--force
 
 switch args.first {
 case "read":
-    let (_, client) = await connect()
+    let (transport, client) = await connect()
     do {
         print(describe(try await client.readState()))
         let raw = try await client.readBatteryRaw()
         print("battery: \(raw)/255 (\(Int((Double(raw) * 100 / 255).rounded()))%)")
+        try await Task.sleep(for: .milliseconds(500))  // let the PnP ID read finish
+        if let pnp = transport.pnpID {
+            print(String(format: "pnp: vendor=0x%04X product=0x%04X", pnp.vendor, pnp.product))
+        } else {
+            print("pnp: not read")
+        }
     } catch {
         fail("read failed: \(error)")
     }

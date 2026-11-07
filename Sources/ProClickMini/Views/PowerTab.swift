@@ -49,7 +49,7 @@ struct PowerTab: View {
             }
         } message: { which in
             Text(which == .original
-                 ? "Writes back the DPI stages (400/800/1600/3200/6400, 3200 active) and 5-minute sleep timer this mouse had on 2026-11-06."
+                 ? "Writes back the DPI stages and sleep timer this mouse had when ProClick Mini first connected to it."
                  : "Writes Razer's factory defaults: 1600 DPI active, 5-minute sleep timer.")
         }
     }

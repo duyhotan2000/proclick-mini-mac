@@ -44,3 +44,17 @@ private func freshDefaults() -> UserDefaults {
     #expect(model.batteryPercent == nil)
     #expect(model.state == nil)
 }
+
+@MainActor @Test func selectedMousePersists() {
+    let defaults = freshDefaults()
+    let id = UUID()
+    AppModel(defaults: defaults).select(id)
+    #expect(AppModel(defaults: defaults).selectedMouse == id)
+}
+
+@MainActor @Test func engineStartFailureIsShown() {
+    let model = AppModel(defaults: freshDefaults())
+    model.engineStartFailed("Couldn't install the event tap")
+    #expect(model.engineProblem == "Couldn't install the event tap")
+    #expect(model.needsAttention)
+}

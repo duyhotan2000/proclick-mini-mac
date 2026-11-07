@@ -7,6 +7,19 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             OnboardingBanner(state: model.onboarding)
+            if let problem = model.engineProblem {
+                Banner(text: problem)
+            }
+            if model.mice.count > 1 {
+                Picker("Settings apply to", selection: Binding(get: { model.selectedMouse ?? model.mice[0].id },
+                                                               set: { model.select($0) })) {
+                    ForEach(Array(model.mice.enumerated()), id: \.element.id) { i, mouse in
+                        Text(MouseLabel.text(mouse, index: i)).tag(mouse.id)
+                    }
+                }
+                .fixedSize()
+                .padding([.horizontal, .top])
+            }
             if model.karabinerConflict {
                 Banner(text: "Karabiner-Elements is modifying the Pro Click Mini, so tilts can't be detected. "
                     + "In Karabiner › Devices, turn off “Modify events” for Pro Click Mini.")
