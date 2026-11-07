@@ -1,1 +1,0 @@
-// Razer BLE vendor protocol.
