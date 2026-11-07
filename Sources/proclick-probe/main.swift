@@ -4,7 +4,15 @@ import RazerBLE
 
 let usage = """
     usage: proclick-probe <command>
-      read                 print the mouse's DPI stages, sleep timer and battery
+      read                               print the mouse's DPI stages, sleep timer and battery
+      write-sleep <seconds> [--yes]      set the sleep timer (60–900)
+      write-dpi <active> <dpi,...> [--yes]
+                                         set DPI stages; <active> is the 0-based stage index
+      restore-original [--yes]           write back the settings first read on 2026-11-06
+      restore-factory [--yes]            write Razer's factory defaults (active 1600, sleep 300 s)
+      snapshots                          list backups saved before each write
+    Write commands print the planned bytes and change nothing unless --yes is given.
+    --force writes the command's field even if its value is unchanged (to test a write with known-good values).
     """
 
 func fail(_ message: String, code: Int32 = 1) -> Never {
@@ -30,7 +38,46 @@ func describe(_ s: MouseState) -> String {
         """
 }
 
-let args = Array(CommandLine.arguments.dropFirst())
+func describe(_ outcome: WriteOutcome) -> String {
+    switch outcome {
+    case .applied(let s): return "applied\n" + describe(s)
+    case .notApplied(let reason): return "not applied: \(reason)"
+    case .rolledBack(let reason, let restored): return "rolledBack: \(reason)\n" + describe(restored)
+    case .rollbackFailed(let reason, let snapshot): return "rollbackFailed: \(reason)\nbackup: \(snapshot.path)"
+    }
+}
+
+func hexString(_ bytes: [UInt8]) -> String { bytes.map { String(format: "%02x", $0) }.joined(separator: " ") }
+
+/// Shows what a write would send, or performs it when `--yes` was passed.
+@MainActor
+func runWrite(forcing field: MouseClient.Field? = nil, _ makeTarget: (MouseState) -> MouseState) async {
+    let (_, client) = await connect()
+    let current: MouseState
+    do { current = try await client.readState() } catch { fail("read failed: \(error)") }
+    let target = makeTarget(current)
+    let force: Set<MouseClient.Field> = forced ? Set([field].compactMap { $0 }) : []
+    guard confirmed else {
+        let wanted = MouseClient.merge(target, onto: current)
+        print("current:\n" + describe(current) + "\nplanned:\n" + describe(wanted))
+        let fields = MouseClient.changedFields(current, wanted).union(force)
+        if fields.contains(.dpi) {
+            print("would write \(Key.dpiTableWrite): \(hexString(wanted.dpi.encodeForWrite()))")
+        }
+        if fields.contains(.sleep) {
+            print("would write \(Key.sleepWrite): \(hexString([UInt8(wanted.sleepSeconds & 0xFF), UInt8(wanted.sleepSeconds >> 8)]))")
+        }
+        fail("dry run: add --yes to write", code: 2)
+    }
+    let outcome = await client.apply(target, force: force)
+    print(describe(outcome))
+    if case .applied = outcome { return }
+    exit(1)
+}
+
+let confirmed = CommandLine.arguments.contains("--yes")
+let forced = CommandLine.arguments.contains("--force")
+let args = Array(CommandLine.arguments.dropFirst()).filter { $0 != "--yes" && $0 != "--force" }
 
 switch args.first {
 case "read":
@@ -41,6 +88,29 @@ case "read":
         print("battery: \(raw)/255 (\(Int((Double(raw) * 100 / 255).rounded()))%)")
     } catch {
         fail("read failed: \(error)")
+    }
+case "write-sleep":
+    guard args.count == 2, let seconds = UInt16(args[1]) else { fail(usage, code: 2) }
+    await runWrite(forcing: .sleep) { var s = $0; s.sleepSeconds = seconds; return s }
+case "write-dpi":
+    guard args.count == 3, let active = Int(args[1]) else { fail(usage, code: 2) }
+    let values = args[2].split(separator: ",").compactMap { UInt16($0) }
+    guard !values.isEmpty, (0..<values.count).contains(active) else { fail(usage, code: 2) }
+    await runWrite(forcing: .dpi) { current in
+        var s = current
+        s.dpi.stages = values.enumerated().map { DPIStage(id: UInt8($0.offset + 1), x: $0.element, y: $0.element) }
+        s.dpi.activeID = UInt8(active + 1)  // ids 1…n here; merge() maps them onto the mouse's ids
+        return s
+    }
+case "restore-original":
+    await runWrite { _ in Defaults.baseline }
+case "restore-factory":
+    await runWrite { _ in Defaults.factory }
+case "snapshots":
+    do {
+        for url in try SnapshotStore.default.list() { print(url.path) }
+    } catch {
+        fail("couldn't list snapshots: \(error)")
     }
 default:
     fail(usage, code: 2)
