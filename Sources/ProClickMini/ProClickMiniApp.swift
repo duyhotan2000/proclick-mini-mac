@@ -19,6 +19,15 @@ struct ProClickMiniApp: App {
         }
         Window("ProClick Mini", id: "settings") {
             SettingsView(model: model)
+                .showsInDock("settings")
+        }
+        .windowResizability(.contentSize)
+        .commands {
+            CommandGroup(replacing: .appInfo) { AboutCommand() }
+        }
+        Window("About ProClick Mini", id: "about") {
+            AboutView()
+                .showsInDock("about")
         }
         .windowResizability(.contentSize)
     }

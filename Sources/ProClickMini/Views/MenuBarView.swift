@@ -30,6 +30,7 @@ struct MenuBarView: View {
         Divider()
         Button("Open Settings…") { openSettings() }
         .keyboardShortcut(",")
+        Button("About ProClick Mini") { open("about") }
         Toggle("Launch at Login", isOn: Binding(
             get: { model.launchAtLogin },
             set: { try? model.setLaunchAtLogin($0) }))
@@ -38,8 +39,10 @@ struct MenuBarView: View {
             .keyboardShortcut("q")
     }
 
-    private func openSettings() {
-        openWindow(id: "settings")
+    private func openSettings() { open("settings") }
+
+    private func open(_ window: String) {
+        openWindow(id: window)
         NSApp.activate(ignoringOtherApps: true)
     }
 
