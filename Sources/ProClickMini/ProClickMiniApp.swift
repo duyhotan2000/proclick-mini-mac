@@ -8,6 +8,7 @@ struct ProClickMiniApp: App {
     init() {
         let model = AppModel()
         model.start()
+        DockController.shared.start()
         _model = StateObject(wrappedValue: model)
     }
 
@@ -19,7 +20,6 @@ struct ProClickMiniApp: App {
         }
         Window("ProClick Mini", id: "settings") {
             SettingsView(model: model)
-                .showsInDock("settings")
         }
         .windowResizability(.contentSize)
         .commands {
@@ -27,7 +27,6 @@ struct ProClickMiniApp: App {
         }
         Window("About ProClick Mini", id: "about") {
             AboutView()
-                .showsInDock("about")
         }
         .windowResizability(.contentSize)
     }

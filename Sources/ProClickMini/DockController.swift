@@ -1,33 +1,40 @@
 import AppCore
 import AppKit
-import SwiftUI
 
 /// Switches between a menu-bar-only app and a regular Dock app as windows open and close.
+/// Tracks AppKit window notifications: SwiftUI's onDisappear doesn't fire reliably when a
+/// `Window` scene is closed.
 @MainActor
 final class DockController {
     static let shared = DockController()
     private var presence = DockPresence()
+    private var observers: [NSObjectProtocol] = []
 
-    func opened(_ window: String) {
-        presence.opened(window)
-        apply()
-        NSApp.activate(ignoringOtherApps: true)
+    func start() {
+        let center = NotificationCenter.default
+        observers = [
+            center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { note in
+                let window = note.object as? NSWindow
+                MainActor.assumeIsolated { if let key = Self.key(window) { self.update { $0.opened(key) } } }
+            },
+            center.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { note in
+                let window = note.object as? NSWindow
+                MainActor.assumeIsolated { if let key = Self.key(window) { self.update { $0.closed(key) } } }
+            },
+        ]
     }
 
-    func closed(_ window: String) {
-        presence.closed(window)
-        apply()
+    /// Our titled windows (Settings, About); the menu-bar menu and status item aren't titled.
+    private static func key(_ window: NSWindow?) -> String? {
+        guard let window, window.styleMask.contains(.titled) else { return nil }
+        return String(describing: ObjectIdentifier(window))
     }
 
-    private func apply() {
+    private func update(_ change: (inout DockPresence) -> Void) {
+        let before = presence.showsInDock
+        change(&presence)
+        guard presence.showsInDock != before else { return }
         NSApp.setActivationPolicy(presence.showsInDock ? .regular : .accessory)
-    }
-}
-
-extension View {
-    /// Shows the Dock icon while this window is open.
-    func showsInDock(_ window: String) -> some View {
-        onAppear { DockController.shared.opened(window) }
-            .onDisappear { DockController.shared.closed(window) }
+        if presence.showsInDock { NSApp.activate(ignoringOtherApps: true) }
     }
 }
